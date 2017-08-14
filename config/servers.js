@@ -36,7 +36,7 @@ module.exports = [
             },
             {
                 name: 'staff-chat',
-                regex: /^([A-Za-z.]+) (\$|[A-Za-z0-9_]{1,16}) (.+)$/,
+                regex: /^([A-Za-z.]+) (?!GWEN)(\$|[A-Za-z0-9_]{1,16}) (.+)$/,
                 matches: ['fullText', 'rank', 'sender', 'text'],
                 replyFormatter:  (text, sender) => `/a ${sender}: ${text}`
             }
