@@ -26,6 +26,7 @@
   "homepage": "https://github.com/ArcticZeroo/iron-golem#readme",
   "dependencies": {
     "chalk": "^2.1.0",
-    "mineflayer": "^2.6.1"
+    "mineflayer": "^2.6.1",
+    "strip-ansi": "^4.0.0"
   }
 }
