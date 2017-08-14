@@ -1,0 +1,31 @@
+{
+  "name": "iron-golem",
+  "version": "0.0.1",
+  "description": "A robust Minecraft bot built upon mineflayer",
+  "main": "index.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ArcticZeroo/iron-golem.git"
+  },
+  "keywords": [
+    "minecraft",
+    "bot",
+    "minecraft",
+    "bot",
+    "frozor",
+    "mineflayer"
+  ],
+  "author": "ArcticZeroo",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ArcticZeroo/iron-golem/issues"
+  },
+  "homepage": "https://github.com/ArcticZeroo/iron-golem#readme",
+  "dependencies": {
+    "chalk": "^2.1.0",
+    "mineflayer": "^2.6.1"
+  }
+}
