@@ -39,7 +39,7 @@ module.exports = [
             },
             {
                 name: 'staff-chat',
-                regex: /^([A-Za-z.]+) (?!GWEN)(\$|[A-Za-z0-9_]{1,16}) (.+)$/,
+                regex: new RegExp(`^(${mineplexRanks}) (?!GWEN)(\\$|[A-Z0-9_]{1,16}) (.+)$`, 'i'),
                 matches: ['fullText', 'rank', 'sender', 'text'],
                 replyFormatter:  (text, sender) => `/a ${sender}: ${text}`
             }
