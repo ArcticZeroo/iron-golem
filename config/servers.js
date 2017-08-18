@@ -30,7 +30,7 @@ module.exports = [
                 name: 'staff-message-receive',
                 regex: /^<- ([A-Za-z.]{1,16}) (\$|[A-Za-z0-9_]{1,16}) (.+)$/,
                 matches: ['fullText', 'rank', 'sender', 'text'],
-                replyFormatter:  (text, sender) => `/ma ${sender}: ${text}`
+                replyFormatter:  (text, sender) => `/ma ${sender} ${text}`
             },
             {
                 name: 'staff-message-send',
