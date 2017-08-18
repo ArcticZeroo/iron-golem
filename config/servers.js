@@ -9,7 +9,7 @@ module.exports = [
         chat: [
             {
                 name: 'server-message',
-                regex: /^(.+?)> (.+)$/,
+                regex: /^(.+?(?!\s+))> (.+)$/,
                 matches: ['fullText', 'prefix', 'text']
             },
             {
