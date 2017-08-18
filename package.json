@@ -1,6 +1,6 @@
 {
   "name": "iron-golem",
-  "version": "0.0.16",
+  "version": "0.0.17",
   "description": "A robust Minecraft bot built upon mineflayer",
   "main": "index.js",
   "scripts": {
