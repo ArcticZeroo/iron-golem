@@ -9,7 +9,7 @@ module.exports = [
         chat: [
             {
                 name: 'server-message',
-                regex: /^(.+?(?!\s+))> (.+)$/,
+                regex: /^(.+?[^\s])>\s+(.+)$/,
                 matches: ['fullText', 'prefix', 'text']
             },
             {
@@ -22,25 +22,25 @@ module.exports = [
             },
             {
                 name: 'private-message',
-                regex: /^(\$|[A-Za-z0-9_]{1,16}) > (\$|[A-Za-z0-9_]{1,16}) (.+)$/,
+                regex: /^(\$|[A-Za-z0-9_]{1,16})\s+>\s+(\$|[A-Za-z0-9_]{1,16})\s+(.+)$/,
                 matches: ['fullText', 'sender', 'target', 'text'],
                 replyFormatter:  (text, sender) => `/m ${sender} ${text}`
             },
             {
                 name: 'staff-message-receive',
-                regex: /^<- ([A-Za-z.]{1,16}) (\$|[A-Za-z0-9_]{1,16}) (.+)$/,
+                regex: /^<-\s+([A-Za-z.]{1,16})\s+(\$|[A-Za-z0-9_]{1,16})\s+(.+)$/,
                 matches: ['fullText', 'rank', 'sender', 'text'],
                 replyFormatter:  (text, sender) => `/ma ${sender} ${text}`
             },
             {
                 name: 'staff-message-send',
-                regex: /^-> ([A-Za-z.]{1,16}) (\$|[A-Za-z0-9_]{1,16}) (.+)$/,
+                regex: /^->\s+([A-Za-z.]{1,16})\s+(\$|[A-Za-z0-9_]{1,16})\s+(.+)$/,
                 matches: ['fullText', 'rank', 'target', 'text'],
                 replyFormatter:  (text, sender) => `/ma ${sender} ${text}`
             },
             {
                 name: 'staff-chat',
-                regex: new RegExp(`^(${mineplexRanks}) (?!GWEN)(\\$|[A-Z0-9_]{1,16}) (.+)$`, 'i'),
+                regex: new RegExp(`^(${mineplexRanks})\\s+(?!GWEN)(\\$|[A-Z0-9_]{1,16})\\s+(.+)$`, 'i'),
                 matches: ['fullText', 'rank', 'sender', 'text'],
                 replyFormatter:  (text, sender) => `/a ${sender}: ${text}`
             }
