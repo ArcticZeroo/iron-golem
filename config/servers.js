@@ -5,6 +5,7 @@ module.exports = [
         server: /\.?mineplex\.com$/i,
         name: 'Mineplex',
         version: '1.8',
+        chatDelay: 1200,
         chat: [
             {
                 name: 'server-message',
