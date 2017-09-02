@@ -28,6 +28,7 @@
     "chalk": "^2.1.0",
     "djs-collection": "0.0.5",
     "mineflayer": "^2.6.1",
+    "mojang": "^0.4.1",
     "strip-ansi": "^4.0.0",
     "vec3": "latest"
   }
