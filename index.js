@@ -4,10 +4,11 @@ const MinecraftUtil = require('./lib/util/MinecraftUtil');
 const StringUtil = require('./lib/util/StringUtil');
 const MinecraftMessage = require('./lib/structures/MinecraftMessage');
 const Client = require('./lib/client/Client');
+const ConnectionStatus = require('./lib/enum/ConnectionStatus');
 
 module.exports = {
     Client,
     MinecraftUtil, StringUtil,
     MinecraftMessage,
-    ConsoleColor, Control
+    ConsoleColor, Control, ConnectionStatus
 };
