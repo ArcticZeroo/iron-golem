@@ -17,7 +17,7 @@ const client = new Client({
     server: 'ip',
     port: 'port',
     // other settings here,
-    // look inside Client.js
+    // look inside client.ts
     // for all the possible settings
     // (or by the time you read this I
     // might actually have some jsdocs)

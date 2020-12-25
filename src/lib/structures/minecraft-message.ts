@@ -1,10 +1,20 @@
-class MinecraftMessage {
+import { ReplyFormatter } from '../../models/message';
+import { Client } from '../client/client';
+
+export class MinecraftMessage {
+    public client: Client;
+    public replyFormatter: ReplyFormatter;
+    public type: string;
+    public sender: string;
+    public text: string;
+    public fullText: string;
+
     /**
      * Create a MinecraftMessage instance.
      * @param {object} client - The client to use when sending messages, etc.
      * @param {object} [data] - Data to apply to this instance, if applicable
      */
-    constructor(client, data) {
+    constructor(client: Client, data?: Record<string, unknown>) {
         this.client = client;
         // If no replyFormatter is given, just send the text.
         /**
@@ -24,7 +34,7 @@ class MinecraftMessage {
         }
     }
 
-    static get defaultReplyFormatter () {
+    static get defaultReplyFormatter(): ReplyFormatter {
         return text => text;
     }
 
@@ -34,7 +44,7 @@ class MinecraftMessage {
      * Change {@link Client.replyFormatter} for a different result.
      * @param text
      */
-    reply(text) {
+    reply(text: string) {
         if (!this.replyFormatter) {
             this.replyFormatter = MinecraftMessage.defaultReplyFormatter;
         }
@@ -46,14 +56,9 @@ class MinecraftMessage {
      * Add data to this MinecraftMessage.
      * @param data
      */
-    setup(data) {
+    setup(data: Record<string, unknown>) {
         /**
          * @namespace
-         * @property {string} MinecraftMessage.type - The type of message.
-         * @property {string} [MinecraftMessage.sender] - The sender of the message. Null if it's the server.
-         * @property {number} [MinecraftMessage.level] - The level of the user, if given.
-         * @property {string} [MinecraftMessage.rank] - The rank of the user, if given.
-         * @property {string} [MinecraftMessage.target] - The target of the message, if given.
          * @property {string} MinecraftMessage.text - The text of the message. This is only what the user sent, not what the server did. Extra info should be removed.
          * @property {string} MinecraftMessage.fullText - The full text of the message. This includes all the extra garbage the server sent in the message.
          */

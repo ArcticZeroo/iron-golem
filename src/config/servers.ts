@@ -1,6 +1,7 @@
+import { IServerConfig } from '../models/server-config';
 const mineplexRanks = 'ULTRA|HERO|LEGEND|TITAN|ETERNAL|TWITCH|YT|YOUTUBE|TRAINEE|MOD|CMA|SR.MOD|C.MOD|SUPPORT|JR.DEV|ADMIN|DEV|LEADER|OWNER';
 
-module.exports = [
+export const servers: IServerConfig[] = [
     {
         server: /\.?mineplex\.com$/i,
         name: 'Mineplex',

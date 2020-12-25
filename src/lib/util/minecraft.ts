@@ -1,18 +1,23 @@
-const stripAnsi = require('strip-ansi');
-const { Vec3 } = require('vec3');
+import { ChatMessage } from 'mineflayer';
+import stripAnsi from 'strip-ansi';
+import { Vec3 } from 'vec3';
+import { getMinecraftColor } from '../enum/console-color';
 
-const ConsoleColor = require('../enum/ConsoleColor');
+import * as ConsoleColor from '../enum/console-color';
+import { Entity } from 'prismarine-entity';
 
 const SPACE_REGEX = /^\s+$/;
 
-class MinecraftUtil {
+type JsonToChalkItem = string | ChatMessage | Array<JsonToChalkItem>;
+
+export class MinecraftUtil {
     /**
      * Turn a packet (JSON message) into text.
      * @param {object} packet - The packet to turn into text.
      * @param {boolean} [stripSpaces = true] - Whether 2+ spaces should be turned into 1
      * @return {string}
      */
-    static packetToText(packet, stripSpaces = true) {
+    static packetToText(packet: object, stripSpaces = true) {
         const packetText = packet.toString();
 
         return (stripSpaces) ? packetText.replace(/\s+/, ' ') : packetText;
@@ -23,12 +28,13 @@ class MinecraftUtil {
      * @param text
      * @return {string}
      */
-    static stripColor(text) {
+    static stripColor(text: string) {
         return stripAnsi(text.replace(/\u00A7[0-9A-FK-OR]/ig, ''));
     }
 
-    static _applyColor(str, code) {
-        return (ConsoleColor.Chat.get(code))(str);
+    static _applyColor(str: string, code: string) {
+        const chalkColor = getMinecraftColor(code);
+        return chalkColor(str);
     }
 
     /**
@@ -36,7 +42,7 @@ class MinecraftUtil {
      * @param {string} text - The text to console-ify
      * @return {string}
      */
-    static textToChalk(text) {
+    static textToChalk(text: string) {
         let chalkMessage = '';
 
         const bits = text.split('§');
@@ -97,7 +103,7 @@ class MinecraftUtil {
      * @param {string|object|Array} item - An item to convert. This mainly is multi-type for recursion.
      * @return {string}
      */
-    static jsonToChalk(item) {
+    static jsonToChalk(item: JsonToChalkItem) {
         let chalkMessage = '';
 
         if (typeof item === 'string') {
@@ -113,7 +119,8 @@ class MinecraftUtil {
                 const { color, text, extra } = item;
 
                 if (color) {
-                    chalkMessage += (ConsoleColor.Minecraft.get(color.toUpperCase()))(text);
+                    const chalkColor = ConsoleColor.getMinecraftColor(color);
+                    chalkMessage += chalkColor(text);
                 } else {
                     chalkMessage += text;
                 }
@@ -132,7 +139,7 @@ class MinecraftUtil {
      * @param {object} packet - The packet (JSON message) to convert.
      * @return {string}
      */
-    static packetToChalk(packet) {
+    static packetToChalk(packet: ChatMessage) {
         if (packet.toAnsi) {
             return packet.toAnsi();
         }
@@ -151,13 +158,11 @@ class MinecraftUtil {
         }
     }
 
-    static getLookPosition(entity) {
+    static getLookPosition(entity: Entity) {
+        const offset = new Vec3(0, 1.5, 0);
         if (!entity.position) {
-            return new Vec3(0, 1.5, 0);
+            return offset;
         }
-
-        return entity.position.offset(0, 1.5, 0);
+        return entity.position.offset(offset.x,  offset.y, offset.z);
     }
 }
-
-module.exports = MinecraftUtil;

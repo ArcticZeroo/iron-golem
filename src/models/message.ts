@@ -1,0 +1,1 @@
+export type ReplyFormatter = (input: string, sender: string) => string;

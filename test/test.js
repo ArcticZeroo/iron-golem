@@ -1,7 +1,7 @@
 const assert = require('assert');
 
-const ConsoleColor = require('../lib/enum/ConsoleColor');
-const MinecraftUtil = require('../lib/util/MinecraftUtil');
+const ConsoleColor = require('../src/lib/enum/console-color');
+const MinecraftUtil = require('../src/lib/util/minecraft');
 
 describe('MinecraftUtil', function () {
     // 2D means §4test instead of §4§ltest, which is 3D

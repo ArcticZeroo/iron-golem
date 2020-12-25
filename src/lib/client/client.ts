@@ -1,15 +1,55 @@
-const EventEmitter = require('events');
-const mineflayer = require('mineflayer');
-const Collection = require('djs-collection');
+import { EventEmitter } from 'events';
+import { ILookData } from '../../models/look';
+import { IServerConfig } from '../../models/server-config';
+import { ConnectionStatus } from '../enum/connection-status';
+import mineflayer, { Bot, BotEvents, BotOptions, ChatMessage, Player } from 'mineflayer';
+import * as config from '../../config';
+import { Control } from '../enum/control';
+import { FatalException } from '../exception/fatal';
+import { MinecraftMessage } from '../structures/minecraft-message';
+import { MinecraftUtil } from '../util/minecraft';
+import { Entity } from 'prismarine-entity';
 
-const config = require('../../config');
-const MinecraftUtil = require('../util/MinecraftUtil');
-const MinecraftMessage = require('../structures/MinecraftMessage');
-const ConnectionStatus = require('../enum/ConnectionStatus');
-const Control = require('../enum/Control');
-const sessionCache = require('./sessionCache');
+interface IClientOptions {
+    username: string;
+    password: string;
+    server: string;
+    port?: number;
+    chatStripExtraSpaces?: boolean;
+    consoleColorChat?: boolean;
+    useServerConfigs?: boolean;
+    parseChat?: boolean;
+    serverConfigs?: Array<IServerConfig>;
+    chatDelay?: number;
+    sessionCache?: boolean | {};
+    loginTimeout?: number;
+    waitForLogin?: boolean;
+}
 
-class Client extends EventEmitter {
+export class Client extends EventEmitter {
+    private readonly options: IClientOptions;
+    private _loginTimer: NodeJS.Timeout;
+    private _connectionStatus: ConnectionStatus;
+    public bot: Bot;
+    public players: Map<string, Player>;
+    private readonly playerJoinTimes = new Map<string, number>();
+    public config: IServerConfig;
+    private readonly _messageQueue: Array<[string, () => void]>;
+    private _messageLastSentTime: number;
+    private readonly _controlStates: Record<Control, boolean> = {
+        [Control.FORWARD]: false,
+        [Control.BACK]:    false,
+        [Control.LEFT]:    false,
+        [Control.RIGHT]:   false,
+        [Control.JUMP]:    false,
+        [Control.SPRINT]:  false
+    };
+    private _loginWaitHandlers: Array<{ reject(): void, resolve(): void }>  = [];
+    private readonly _look: ILookData = {
+        target:   null,
+        interval: null
+    };
+
     /**
      * Create a single-server Minecraft client.
      * @param {object} [options={}]
@@ -29,7 +69,7 @@ class Client extends EventEmitter {
      * @param {boolean} [options.waitForLogin=false] - Whether the init() method should wait for login to not be a failure before resolving the promise. You should set loginTimeout to use this, but aren't required to.
      *
      */
-    constructor(options = {}) {
+    constructor(options: IClientOptions) {
         super();
 
         // noinspection JSValidateTypes
@@ -39,23 +79,23 @@ class Client extends EventEmitter {
          * @type {object}
          */
         this.options = Object.assign({
-            port: 25565,
+            port:                 25565,
             chatStripExtraSpaces: true,
-            consoleColorChat: true,
-            useServerConfigs: true,
-            parseChat: true,
-            serverConfigs: [],
-            chatDelay: 0
+            consoleColorChat:     true,
+            useServerConfigs:     true,
+            parseChat:            true,
+            serverConfigs:        [],
+            chatDelay:            0
         }, options);
 
         if (this.options.useServerConfigs) {
             this.options.serverConfigs = this.options.serverConfigs.concat(config.servers);
 
-            for (const config of this.options.serverConfigs) {
+            for (const serverConfig of this.options.serverConfigs) {
                 // If server regex matches ours
                 // i.e. if the bot is on a known server
-                if (config.server && config.server.test(this.options.server)) {
-                    this.config = config;
+                if (serverConfig.server && serverConfig.server.test(this.options.server)) {
+                    this.config = serverConfig;
 
                     // If the config has a specified chatDelay,
                     // and the user has not manually added one,
@@ -82,27 +122,11 @@ class Client extends EventEmitter {
 
         /**
          * A collection of lowercase usernames to player objects.
-         * @type {Collection.<string, object>}
+         * @type {Map.<string, Player>}
          */
-        this.players = new Collection();
+        this.players = new Map<string, Player>();
 
         this._connectionStatus = ConnectionStatus.NOT_STARTED;
-
-        this._look = {
-            target: null,
-            interval: null
-        };
-
-        this._controlStates = {
-            [Control.FORWARD]: false,
-            [Control.BACK]: false,
-            [Control.LEFT]: false,
-            [Control.RIGHT]: false,
-            [Control.JUMP]: false,
-            [Control.SPRINT]: false
-        };
-
-        this._loginWaitHandlers = [];
     }
 
     /**
@@ -138,13 +162,13 @@ class Client extends EventEmitter {
      * @param packet
      * @private
      */
-    _handleMinecraftMessage(packet) {
+    _handleMinecraftMessage(packet: ChatMessage) {
         // Remove extra spaces because they break things.
         const text = MinecraftUtil.stripColor(MinecraftUtil.packetToText(packet, this.options.chatStripExtraSpaces));
 
         const consoleText = (this.options.consoleColorChat)
-            ? MinecraftUtil.packetToChalk(packet)
-            : null;
+                            ? MinecraftUtil.packetToChalk(packet)
+                            : null;
 
         /**
          * Emitted when the client receives a message.
@@ -156,9 +180,9 @@ class Client extends EventEmitter {
 
         if (this.config && this.options.parseChat) {
             for (const chatType of this.config.chat) {
-                const chatMatch = chatType.regex.exec(text);
+                const chatMatch = text.match(chatType.regex);
                 if (chatMatch) {
-                    const parts = {};
+                    const parts: Record<string, string> = {};
 
                     // Get the name of the match in each index,
                     // and set the part's property to the value
@@ -191,7 +215,7 @@ class Client extends EventEmitter {
                 }
             }
 
-            const minecraftMessage = new MinecraftMessage(this, {text, fullText: text});
+            const minecraftMessage = new MinecraftMessage(this, { text, fullText: text });
 
             /**
              * Emitted when chat parsing is on, and
@@ -210,10 +234,10 @@ class Client extends EventEmitter {
      * Set connection status and emit the
      * associated event based on current
      * and prior statuses.
-     * @param {ConnectionStatus|String} status - The new status to set.
+     * @param {ConnectionStatus} status - The new status to set.
      * @private
      */
-    _setConnectionStatus(status) {
+    _setConnectionStatus(status: ConnectionStatus) {
         const old = this._connectionStatus;
 
         this._connectionStatus = status;
@@ -265,9 +289,9 @@ class Client extends EventEmitter {
      * @private
      */
     _registerEvents() {
-        const forward = (e)=> {
-            this.bot.on(e, (...d)=> {
-                this.emit(e, ...d);
+        const forward = <E extends keyof BotEvents>(event: E) => {
+            this.bot.on(event, (...d: unknown[]) => {
+                this.emit(event, ...d);
             });
         };
 
@@ -302,7 +326,7 @@ class Client extends EventEmitter {
          * @event Client#dimensionChange
          * @param {string} dimension - The dimension the client is now in.
          */
-        this.bot.on('respawn', ()=>{
+        this.bot.on('respawn', () => {
             this.emit('dimensionChange', this.bot.game.dimension);
             this.emit('respawn', this.bot.game.dimension);
         });
@@ -315,7 +339,7 @@ class Client extends EventEmitter {
          * actually entered the world when login is called.
          * @event Client#login
          */
-        this.bot.on('login', ()=>{
+        this.bot.on('login', () => {
             // Update connection status
             this._setConnectionStatus(ConnectionStatus.LOGGED_IN);
 
@@ -329,7 +353,7 @@ class Client extends EventEmitter {
          * Emitted when the client's connection ends.
          * @event Client#end
          */
-        this.bot.on('end', ()=>{
+        this.bot.on('end', () => {
             this._setConnectionStatus(ConnectionStatus.DISCONNECTED);
 
             this._clearLoginTimer();
@@ -357,12 +381,11 @@ class Client extends EventEmitter {
          * @param {number} player.ping - The player's ping
          * @param {object} player.entity - The player's entity
          */
-        this.bot.on('playerJoined', (player)=>{
-             player.joinTime = Date.now();
+        this.bot.on('playerJoined', (player) => {
+            this.players.set(player.uuid, player);
+            this.playerJoinTimes.set(player.uuid, Date.now());
 
-             this.players.set(player.username.toLowerCase(), player);
-
-             this.emit('playerJoin', player);
+            this.emit('playerJoin', player);
         });
 
         /**
@@ -370,10 +393,9 @@ class Client extends EventEmitter {
          * @event Client#playerLeave
          * @param {object} player - The player that left
          */
-        this.bot.on('playerLeft', (player)=>{
-            player.leaveTime = Date.now();
-
-            this.players.delete(player.username.toLowerCase());
+        this.bot.on('playerLeft', (player) => {
+            this.players.delete(player.uuid);
+            this.playerJoinTimes.delete(player.uuid);
 
             this.emit('playerLeave', player);
         });
@@ -385,7 +407,7 @@ class Client extends EventEmitter {
          * @param {boolean} loggedIn - Whether the client was logged in before it was kicked.
          * @param {string} [consoleText] - Console-colored text, if options.consoleColorChat is true.
          */
-        this.bot.on('kicked', (reason, loggedIn)=>{
+        this.bot.on('kicked', (reason, loggedIn) => {
             this._setConnectionStatus(ConnectionStatus.DISCONNECTED);
 
             this._clearLoginTimer();
@@ -416,7 +438,7 @@ class Client extends EventEmitter {
          * @param {string} text - Text sent by the server.
          * @param {string} [consoleText] - Console-colored text, if options.consoleColorChat is true.
          */
-        this.bot.on('actionBar', (packet)=>{
+        this.bot.on('actionBar', (packet) => {
             const text = MinecraftUtil.stripColor(MinecraftUtil.packetToText(packet, this.options.chatStripExtraSpaces));
 
             let consoleText;
@@ -428,10 +450,13 @@ class Client extends EventEmitter {
             this.emit('actionBar', text, consoleText);
         });
 
-        this.bot.on('error', (e)=>{
-            const errorText = (e.message || e || '').toLowerCase();
+        this.bot.on('error', (error: Error | string) => {
+            const errorText = (typeof error === 'string' ? error : (error.message || '')).toLowerCase();
 
             // Yep, absorb deserialization and buffer errors.
+            // We do this because servers running custom software (e.g. Mineplex, Hypixel)
+            // throw a billion deserialization/buffer errors,
+            // but mineflayer actually works fine if we just ignore the errors.
             if (errorText.includes('deserialization') || errorText.includes('buffer')) {
                 return;
             }
@@ -447,7 +472,7 @@ class Client extends EventEmitter {
             if (errorText.includes('invalid username or password')) {
                 this._setConnectionStatus(ConnectionStatus.DISCONNECTED);
 
-                this.emit('error', new Error('FATAL: Unable to authenticate with Mojang. Your information may be incorrect, or you were rate-limited.'));
+                this.emit('error', new FatalException('FATAL: Unable to authenticate with Mojang. Your information may be incorrect, or you were rate-limited.'));
 
                 this._clearLoginTimer();
                 this._processLoginWaitHandlers(false);
@@ -457,10 +482,10 @@ class Client extends EventEmitter {
 
             // Just in case, since it could be a string.
             // You never know with a 3rd-party lib.
-            if (e instanceof Error) {
+            if (error instanceof Error) {
                 let message;
 
-                switch (e.code) {
+                switch (error.code) {
                     case 'ECONNRESET':
                         // Connection was reset, so the host must have closed it.
                         message = 'Connection forcibly closed by remote host.';
@@ -471,11 +496,11 @@ class Client extends EventEmitter {
                         break;
                     case 'ENOENT':
                         // If it's not getaddrinfo I don't know what it is. Just let it pass.
-                        if (e.syscall !== 'getaddrinfo') {
+                        if (error.syscall !== 'getaddrinfo') {
                             break;
                         }
 
-                        const attempt = e.host + (e.port) ? `:${e.port}` : '';
+                        const attempt = error.host + (error.port) ? `:${error.port}` : '';
 
                         // The client's machine couldn't resolve an IP
                         message = `Unable to resolve ${attempt}. It may not exist, or internet connectivity may not be working.`;
@@ -501,11 +526,11 @@ class Client extends EventEmitter {
 
             // If nothing has returned by now, just pass along the error.
             // Don't reject login waiting handlers though since it's not necessarily fatal
-            this.emit('error', e);
+            this.emit('error', error);
         });
     }
 
-    _clean(reason) {
+    _clean(reason?: string) {
         if (this.bot) {
             this.bot.quit(reason);
             this.bot.removeAllListeners();
@@ -518,15 +543,16 @@ class Client extends EventEmitter {
      * It will also kill an existing bot if applicable.
      * @param {string} [reason] - Optional reason for quitting in an existing bot
      */
-    async init(reason) {
+    async init(reason?: string) {
         this._setConnectionStatus(ConnectionStatus.LOGGING_IN);
         this._loginWaitHandlers = [];
 
         this._clean(reason);
 
-        const botOptions = {
+        const botOptions: BotOptions = {
             port: this.options.port,
-            host: this.options.server
+            host: this.options.server,
+            username: ''
         };
 
         if (this.config && this.config.version) {
@@ -576,8 +602,8 @@ class Client extends EventEmitter {
      * @return {Promise}
      * @private
      */
-    _addToQueue(text) {
-        return new Promise((resolve) => {
+    _addToQueue(text: string) {
+        return new Promise<void>((resolve) => {
             this._messageQueue.push([text, resolve]);
         });
     }
@@ -606,7 +632,7 @@ class Client extends EventEmitter {
         resolve();
 
         if (this._messageQueue.length > 0) {
-            setTimeout(()=>{
+            setTimeout(() => {
                 this._processQueue();
             }, this.options.chatDelay);
         }
@@ -618,7 +644,7 @@ class Client extends EventEmitter {
      * @param {boolean} [ignoreDelay=false] - Whether or not to ignore chat delay.
      * @return {Promise}
      */
-    async send(text, ignoreDelay) {
+    async send(text: string, ignoreDelay: boolean = false) {
         // isOnline checks to make sure the bot
         // is truthy, and that its connectionStatus
         // is logged in.
@@ -655,7 +681,7 @@ class Client extends EventEmitter {
         const untilNext = this.options.chatDelay - sinceLast;
 
         // Process the queue after that amount of time has passed.
-        setTimeout(()=>{
+        setTimeout(() => {
             this._processQueue();
         }, untilNext);
 
@@ -666,7 +692,7 @@ class Client extends EventEmitter {
     /**
      * @alias Client#send
      */
-    chat(text, ignoreDelay) {
+    chat(text: string, ignoreDelay: boolean = false) {
         return this.send(text, ignoreDelay);
     }
 
@@ -675,7 +701,7 @@ class Client extends EventEmitter {
      * @param {string} text - Message to send.
      * @return {Promise}
      */
-    sendNow(text) {
+    sendNow(text: string) {
         return this.send(text, true);
     }
 
@@ -693,10 +719,10 @@ class Client extends EventEmitter {
      * @param text
      * @return {Promise}
      */
-    sendNext(text) {
-        return new Promise((resolve) => {
+    sendNext(text: string) {
+        return new Promise<void>((resolve) => {
             // add this to the start of the queue
-            this._messageQueue = [[text, resolve], ...this._messageQueue];
+            this._messageQueue.splice(0, 0, [text, resolve]);
         });
     }
 
@@ -731,7 +757,7 @@ class Client extends EventEmitter {
      * @param {number} [interval=100] - The interval at which to look, in ms
      * @param {boolean} [force] - Whether the look should be immediately forced (i.e. not smooth)
      */
-    watch(entity, interval = 100, force) {
+    watch(entity: Entity, interval = 100, force: boolean = false) {
         if (!entity) {
             throw new TypeError(`Expected type \`Entity\` for \`entity\`, received ${typeof entity}`);
         }
@@ -745,7 +771,7 @@ class Client extends EventEmitter {
         }
 
         this._look.target = entity;
-        this._look.interval = setInterval(()=>{
+        this._look.interval = setInterval(() => {
             if (this.isOnline) {
                 this.bot.lookAt(MinecraftUtil.getLookPosition(this._look.target), force);
             }
@@ -756,7 +782,7 @@ class Client extends EventEmitter {
      * Watch a player.
      * @param {string|object} player - The player to watch. This can be a username or a player object.
      */
-    watchPlayer(player) {
+    watchPlayer(player: Player | string) {
         if (typeof player === 'string') {
             player = player.toLowerCase();
 
@@ -776,8 +802,8 @@ class Client extends EventEmitter {
         this.watch(player.entity);
     }
 
-    isControlActive(control) {
-        return !!this._controlStates[control];
+    isControlActive(control: Control) {
+        return Boolean(this._controlStates[control]);
     }
 
     /**
@@ -792,7 +818,7 @@ class Client extends EventEmitter {
      * @param {boolean} state - The state to set it to
      * @returns {?boolean}
      */
-    setControlState(control, state) {
+    setControlState(control: Control, state: boolean) {
         if (!this._controlStates[control]) {
             return null;
         }
@@ -806,7 +832,7 @@ class Client extends EventEmitter {
      * Set all control states to false (off).
      */
     clearControlStates() {
-        for (const key of Object.keys(this._controlStates)) {
+        for (const key of Object.keys(this._controlStates) as Control[]) {
             this._controlStates[key] = false;
         }
 
@@ -817,7 +843,7 @@ class Client extends EventEmitter {
      * Toggle a control state.
      * @param {string} control - The control whose state to toggle.
      */
-    toggleControlState(control) {
+    toggleControlState(control: Control) {
         if (!this.isOnline) {
             return;
         }
@@ -841,7 +867,7 @@ class Client extends EventEmitter {
     jump() {
         this.setControlState(Control.JUMP, true);
 
-        setTimeout(()=>{
+        setTimeout(() => {
             this.setControlState(Control.JUMP, false);
         }, 10);
     }
@@ -861,10 +887,8 @@ class Client extends EventEmitter {
             return;
         }
 
-        return new Promise((resolve, reject) => {
+        return new Promise<void>((resolve, reject) => {
             this._loginWaitHandlers.push({ resolve, reject });
         });
     }
 }
-
-module.exports = Client;
